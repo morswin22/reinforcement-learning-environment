@@ -65,7 +65,7 @@ class Environment:
 
   def render(self):
     img = self.get_image()
-    img = img.resize((300, 300))
+    img = img.resize((300, 300), resample=Image.BOX)
     cv2.imshow("image", np.array(img))
     cv2.waitKey(1)
 
