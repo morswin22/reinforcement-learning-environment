@@ -1,48 +1,35 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import pickle
-from matplotlib import style
 import time
 import os
+from tqdm import tqdm
 from environment import Environment
+from network import DQN
 
-style.use("ggplot")
+MIN_REWARD = -100
 
-LEARNING_RATE = 0.1
-DISCOUNT = 0.95
+EPISODES = 20_000
+AGGREGATE_STATS_EVERY = 50
+SHOW_EVERY = 1_000
 
-HM_EPISODES = 25_000
-SHOW_EVERY = 3_000
-SHOW_PREVIEW = True
-
-epsilon = 0.9
-EPS_DECAY = 0.9998
-
-start_q_table = None # or filename
+epsilon = 1
+MIN_EPSILON = 0.001
+EPSILON_DECAY = MIN_EPSILON ** (2/EPISODES)
 
 env = Environment()
+env.RETURN_IMAGES = True
 
-if start_q_table is None:
-  q_table = {}
-  for x1 in range(-env.SIZE + 1, env.SIZE):
-    for y1 in range(-env.SIZE + 1, env.SIZE):
-      for x2 in range(-env.SIZE + 1, env.SIZE):
-        for y2 in range(-env.SIZE + 1, env.SIZE):
-          q_table[(x1, y1, x2, y2)] = np.random.uniform(-6, 0, size = env.ACTION_SPACE_SIZE)
-else:
-  with open(start_q_table, "rb") as f:
-    q_table = pickle.load(f)
+agent = DQN(env)
 
-episode_rewards = []
+if not os.path.isdir('models'):
+  os.makedirs('models')
 
-for episode in range(HM_EPISODES):
-  if not episode % SHOW_EVERY:
-    print(f"on #{episode}, epsilon: {epsilon}")
-    print(f"{SHOW_EVERY} ep mean {np.mean(episode_rewards[-SHOW_EVERY:])}")
-    show = True
-  else:
-    show = False
+episode_rewards = [MIN_REWARD]
 
+for episode in tqdm(range(1, EPISODES+1), ascii=True, unit="episode"):
+  show = SHOW_EVERY and episode % SHOW_EVERY == 0
+
+  agent.tensorboard.step = episode
+  step = 1
   episode_reward = 0
 
   current_state = env.reset()
@@ -50,44 +37,33 @@ for episode in range(HM_EPISODES):
   done = False
   while not done:
     if np.random.random() > epsilon:
-      action = np.argmax(q_table[current_state])
+      action = np.argmax(agent.get_qs(current_state))
     else:
-      action = np.random.randint(0, 4)
+      action = np.random.randint(0, env.ACTION_SPACE_SIZE)
     
     new_state, reward, done = env.step(action)
 
     episode_reward += reward
 
-    if SHOW_PREVIEW and show:
+    if show:
       env.render()
 
-    max_future_q = np.max(q_table[new_state])
-    current_q = q_table[current_state][action]
-
-    if reward == env.FOOD_REWARD:
-      new_q = env.FOOD_REWARD
-    elif reward == -env.ENEMY_PENALTY:
-      new_q = -env.ENEMY_PENALTY
-    else:
-      new_q = (1 - LEARNING_RATE) * current_q + LEARNING_RATE * (reward + DISCOUNT * max_future_q)
-
-    q_table[current_state][action] = new_q
+    agent.update_replay_memory((current_state, action, reward, new_state, done))
+    agent.train(done, step)
 
     current_state = new_state
-
-    episode_reward += reward
+    step += 1
 
   episode_rewards.append(episode_reward)
-  epsilon *= EPS_DECAY
+  if not episode % AGGREGATE_STATS_EVERY or episode == 1:
+    average_reward = sum(episode_rewards[-AGGREGATE_STATS_EVERY:])/len(episode_rewards)
+    min_reward = min(episode_rewards[-AGGREGATE_STATS_EVERY:])
+    max_reward = max(episode_rewards[-AGGREGATE_STATS_EVERY:])
+    agent.tensorboard.update_stats(reward_avg=average_reward, reward_min=min_reward, reward_max=max_reward, epsilon=epsilon)
 
-moving_avg = np.convolve(episode_rewards, np.ones((SHOW_EVERY, )) / SHOW_EVERY, mode="valid")
+    if min_reward >= MIN_REWARD:
+      agent.model.save(f"models/{agent.MODEL_NAME}__{max_reward:_>7.2f}max_{average_reward:_>7.2f}avg_{min_reward:_>7.2f}min__{int(time.time())}.model")
 
-plt.plot([i for i in range(len(moving_avg))], moving_avg)
-plt.ylabel(f"reward {SHOW_EVERY}ma")
-plt.xlabel("episode #")
-plt.show()
-
-fname = f"qtables/qtable-{int(time.time())}.pickle"
-os.makedirs(os.path.dirname(fname), exist_ok=True)
-with open(fname, "wb") as f:
-  pickle.dump(q_table, f)
+  if epsilon > MIN_EPSILON:
+    epsilon *= EPSILON_DECAY
+    epsilon = max(MIN_EPSILON, epsilon)
