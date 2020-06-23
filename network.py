@@ -1,14 +1,14 @@
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, Dropout, Conv2D, MaxPooling2D, Activation, Flatten
-from tensorflow.keras.callbacks import TensorBoard
-from tensorflow.keras.optimizers import Adam
-from collections import deque
-import time
-import numpy as np
 import random
+import time
+from collections import deque
 
-# print(TensorBoard._log_metrics.__code__.co_varnames)
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.layers import (Activation, Conv2D, Dense, Dropout,
+                                     Flatten, MaxPooling2D)
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.optimizers import Adam
 
 class ModifiedTensorBoard(TensorBoard):
   def __init__(self, **kwargs):
@@ -73,6 +73,10 @@ class DQN:
     model.add(Dense(self.action_space_size, activation="linear"))
     model.compile(loss="mse", optimizer=Adam(lr=0.001), metrics=["accuracy"])
     return model
+
+  def load_model(self, path):
+    self.model = load_model(path)
+    self.target_model = load_model(path)
 
   def update_replay_memory(self, transition):
     self.replay_memory.append(transition)
