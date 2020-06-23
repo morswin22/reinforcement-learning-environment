@@ -1,6 +1,8 @@
+import ctypes
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1' 
 import random
+import sys
 import time
 from collections import deque
 
@@ -11,6 +13,11 @@ from tensorflow.keras.layers import (Activation, Conv2D, Dense, Dropout,
                                      Flatten, MaxPooling2D)
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.optimizers import Adam
+
+shell = ctypes.windll.shell32
+if not shell.IsUserAnAdmin():
+  shell.ShellExecuteW(None, u"runas", sys.executable, u" ".join(sys.argv), None, 1)
+  raise Exception('Elevated privilege is required')
 
 class ModifiedTensorBoard(TensorBoard):
   def __init__(self, **kwargs):
