@@ -1,4 +1,4 @@
-tensorflow==2.2.1
+tensorflow==2.5.1
 numpy==1.18.4
 Pillow==7.1.2
 matplotlib==3.2.1
